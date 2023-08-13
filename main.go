@@ -1,48 +1,44 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
+)
+
+const (
+	projectID = "be-matsuhashi-tatsuya"
+	baseURL   = "https://azami-jp.com/live"
 )
 
 func main() {
 	http.HandleFunc("/", handler)
-	http.ListenAndServe(":8080", nil)
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		return
+	}
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	baseURL := "https://azami-jp.com/live"
+	ctx := r.Context()
 
-	// Goquery
-	resp, err := fetch(baseURL)
+	client, err := newDatastoreClient(ctx, projectID)
+	if err != nil {
+		panic(err)
+	}
+	defer client.Close()
+
+	lives, err := parse(baseURL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	infosByGoquery, err := parseByGoquery(resp)
+	err = saveLatestLives(ctx, client, lives)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		panic(err)
 	}
 
-	fmt.Fprintln(w, "Goquery")
-	for _, item := range infosByGoquery {
-		fmt.Fprintln(w, item)
-		// fmt.Fprintln(w, info, info.URL) // TODO ランタイムのバグか？出力が異なる
-	}
-
-	// Colly
-	infosByColly, err := parseByColly(baseURL)
+	err = saveLiveMaster(ctx, client, lives)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	fmt.Fprintln(w, "====================================")
-	fmt.Fprintln(w, "Colly")
-	for _, info := range infosByColly {
-		fmt.Fprintln(w, info)
-		// fmt.Fprintln(w, info, info.URL) // TODO ランタイムのバグか？出力が異なる
+		panic(err)
 	}
 }
